@@ -19,10 +19,11 @@ module NestedForm
       args << (options.delete(:href) || "javascript:void(0)")
       args << options
       @fields ||= {}
+      @fields[association] ||= {}
       @template.after_nested_form(association) do
         model_object = object.class.reflect_on_association(association).klass.new
         output = %Q[<div id="#{association}_fields_blueprint" style="display: none">].html_safe
-        output << fields_for(association, model_object, :child_index => "new_#{association}", &@fields[association])
+        output << fields_for(association, model_object, :child_index => "new_#{association}", &@fields[association][:block])
         output.safe_concat('</div>')
         output
       end
@@ -52,15 +53,32 @@ module NestedForm
       # TODO Test this better
       block ||= Proc.new { |fields| @template.render(:partial => "#{association_name.to_s.singularize}_fields", :locals => {:f => fields}) }
       @fields ||= {}
-      @fields[association_name] = block
+      opts = args.last.is_a?(Hash) ? args.last : {}
+      wrap = opts.delete(:wrap)
+      wrap = true if wrap.nil?
+
+      @fields[association_name] = {
+        :wrap => wrap,
+        :prepend => opts.delete(:prepend) || '<div class="fields">',
+        :append => opts.delete(:append) || '</div>',
+        :block => block
+      }
+      if args.last.is_a?(Hash)
+        args.last[:nested_form_association] = association_name
+      else
+        args << {:nested_form_association => association_name}
+      end
       super(association_name, args, block)
     end
 
     def fields_for_nested_model(name, object, options, block)
-      output = '<div class="fields">'.html_safe
+      field_options = @fields[options[:nested_form_association]]
+
+      output = ''
+      output << field_options[:prepend] if field_options[:wrap]
       output << super
-      output.safe_concat('</div>')
-      output
+      output << field_options[:append] if field_options[:wrap]
+      output.html_safe
     end
   end
 end
